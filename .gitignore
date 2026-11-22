@@ -1,0 +1,7 @@
+node_modules
+# Keep environment variables out of version control
+database/.env
+database/.env.*
+!database/.env.example
+database/node_modules/
+database/generated/

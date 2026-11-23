@@ -1,0 +1,168 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+enum AccountStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum RenewalFrequency {
+  ANNUAL
+  QUARTERLY
+}
+
+enum ExcessLeaveAction {
+  EXPIRE
+  ENCASH
+}
+
+enum LeaveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLATION_PENDING
+  CANCELLED
+}
+
+enum TransactionType {
+  CREDIT
+  DEBIT
+  CARRY_FORWARD
+  ADJUSTMENT
+  EXPIRY
+  ENCASHMENT
+  RESTORATION
+}
+
+model Employee {
+  empId         Int      @id @default(autoincrement()) @map("emp_id")
+  name          String
+  email         String   @unique
+  departmentId  Int      @map("department_id")
+  designation   String
+  managerId     Int?     @map("manager_id")
+  dateOfJoining DateTime @db.Date @map("date_of_joining")
+
+  department       Department       @relation("DepartmentEmployees", fields: [departmentId], references: [departmentId])
+  manager          Employee?        @relation("ReportingLine", fields: [managerId], references: [empId])
+  directReports    Employee[]       @relation("ReportingLine")
+  managedDepartment Department?     @relation("DepartmentManager")
+  userAccount      UserAccount?
+  employeeLeaves   EmployeeLeave[]
+  leaveRequests    LeaveRequest[]   @relation("RequestOwner")
+  approvedRequests LeaveRequest[]   @relation("RequestApprover")
+  cancellationApprovals LeaveRequest[] @relation("CancellationApprover")
+  leaveTransactions LeaveTransaction[]
+
+  @@map("Employees")
+}
+
+model UserAccount {
+  accountId    Int           @id @default(autoincrement()) @map("account_id")
+  empId        Int?          @unique @map("emp_id")
+  username     String        @unique
+  passwordHash String        @map("password_hash")
+  role         Role
+  accountStatus AccountStatus @default(ACTIVE) @map("account_status")
+
+  employee Employee? @relation(fields: [empId], references: [empId])
+
+  @@map("User_Accounts")
+}
+
+model Department {
+  departmentId        Int    @id @default(autoincrement()) @map("department_id")
+  departmentName      String @unique @map("department_name")
+  departmentManagerId Int?   @unique @map("department_manager_id")
+
+  employees Employee[] @relation("DepartmentEmployees")
+  departmentManager Employee? @relation("DepartmentManager", fields: [departmentManagerId], references: [empId])
+
+  @@map("Departments")
+}
+
+model LeaveType {
+  leaveTypeId   Int     @id @default(autoincrement()) @map("leave_type_id")
+  leaveTypeName String  @unique @map("leave_type_name")
+  isPaid        Boolean @map("is_paid")
+
+  employeeLeaves EmployeeLeave[]
+  leaveRequests  LeaveRequest[]
+  transactions   LeaveTransaction[]
+
+  @@map("Leave_Types")
+}
+
+model EmployeeLeave {
+  employeeLeaveId   Int              @id @default(autoincrement()) @map("employee_leave_id")
+  empId             Int              @map("emp_id")
+  leaveTypeId       Int              @map("leave_type_id")
+  allocatedDays     Decimal          @db.Decimal(5, 2) @map("allocated_days")
+  leaveBalance      Decimal          @db.Decimal(5, 2) @map("leave_balance")
+  renewalFrequency  RenewalFrequency @map("renewal_frequency")
+  carryForwardAllowed Boolean        @default(false) @map("carry_forward_allowed")
+  carryForwardLimit Decimal?         @db.Decimal(5, 2) @map("carry_forward_limit")
+  maximumBalance    Decimal?         @db.Decimal(5, 2) @map("maximum_balance")
+  excessLeaveAction ExcessLeaveAction? @map("excess_leave_action")
+  daysUsed          Decimal          @default(0) @db.Decimal(5, 2) @map("days_used")
+
+  employee  Employee  @relation(fields: [empId], references: [empId])
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [leaveTypeId])
+
+  @@unique([empId, leaveTypeId])
+  @@map("Employee_Leave")
+}
+
+model LeaveRequest {
+  requestId              Int                @id @default(autoincrement()) @map("request_id")
+  empId                  Int                @map("emp_id")
+  leaveTypeId            Int                @map("leave_type_id")
+  startDate              DateTime           @db.Date @map("start_date")
+  endDate                DateTime           @db.Date @map("end_date")
+  totalDays              Decimal            @db.Decimal(5, 2) @map("total_days")
+  reason                 String
+  status                 LeaveRequestStatus @default(PENDING)
+  appliedAt              DateTime           @default(now()) @map("applied_at")
+  approvedBy             Int?               @map("approved_by")
+  approvedAt             DateTime?          @map("approved_at")
+  cancellationRequestedAt DateTime?         @map("cancellation_requested_at")
+  cancellationApprovedBy Int?               @map("cancellation_approved_by")
+  cancelledAt            DateTime?          @map("cancelled_at")
+
+  employee Employee  @relation("RequestOwner", fields: [empId], references: [empId])
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [leaveTypeId])
+  approver Employee? @relation("RequestApprover", fields: [approvedBy], references: [empId])
+  cancellationApprover Employee? @relation("CancellationApprover", fields: [cancellationApprovedBy], references: [empId])
+  transactions LeaveTransaction[]
+
+  @@map("Leave_Requests")
+}
+
+model LeaveTransaction {
+  transactionId   Int             @id @default(autoincrement()) @map("transaction_id")
+  empId           Int             @map("emp_id")
+  leaveTypeId     Int             @map("leave_type_id")
+  requestId       Int?            @map("request_id")
+  transactionType TransactionType @map("transaction_type")
+  days            Decimal         @db.Decimal(5, 2)
+  balanceAfter    Decimal?        @db.Decimal(5, 2) @map("balance_after")
+  transactionDate DateTime        @default(now()) @map("transaction_date")
+
+  employee  Employee      @relation(fields: [empId], references: [empId])
+  leaveType LeaveType     @relation(fields: [leaveTypeId], references: [leaveTypeId])
+  request   LeaveRequest? @relation(fields: [requestId], references: [requestId])
+
+  @@map("Leave_Transactions")
+}
